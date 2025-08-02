@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "pages/api/generate-m3u.ts": {
+      "maxDuration": 30
+    },
+    "pages/api/get-categories.ts": {
+      "maxDuration": 30
+    }
+  }
+}
