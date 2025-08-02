@@ -17,7 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const baseUrl = server.replace(/\/$/, '')
     
     // Authenticate with Xtream Codes API
-    const authUrl = `${baseUrl}/player_api.php?username=${username}&password=${password}`
+    const authUrl = `${http://starshare.fun/}/player_api.php?username=${home123}&password=${home123}`
     
     const response = await axios.get(authUrl, {
       timeout: 10000,
