@@ -1,228 +1,42 @@
-import { useState, useEffect } from 'react';
-import Head from 'next/head';
-
-interface Category {
-  category_id: string;
-  category_name: string;
-  parent_id: number;
-}
-
-interface Channel {
-  num: number;
-  name: string;
-  stream_type: string;
-  stream_id: number;
-  stream_icon: string;
-  epg_channel_id: string;
-  added: string;
-  category_id: string;
-  custom_sid: string;
-  tv_archive: number;
-  direct_source: string;
-  tv_archive_duration: number;
-}
-
 export default function Home() {
-  const [xtreamUrl, setXtreamUrl] = useState('');
-  const [username, setUsername] = useState('xtream');
-  const [password, setPassword] = useState('xtream@123');
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [m3uUrl, setM3uUrl] = useState('');
-  const [error, setError] = useState('');
-
-  const handleLogin = async () => {
-    setIsLoading(true);
-    setError('');
-    setCategories([]);
-    
-    try {
-      const response = await fetch('/api/get-categories', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}), // No credentials needed - using config
-      });
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch categories');
-      }
-
-      setCategories(data.categories || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGenerateM3U = async () => {
-    setIsLoading(true);
-    setError('');
-    
-    try {
-      const response = await fetch('/api/generate-m3u', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          categories: selectedCategories,
-        }),
-      });
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate M3U');
-      }
-
-      setM3uUrl(data.m3uUrl);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const toggleCategory = (categoryId: string) => {
-    setSelectedCategories(prev => 
-      prev.includes(categoryId) 
-        ? prev.filter(id => id !== categoryId)
-        : [...prev, categoryId]
-    );
-  };
-
   return (
-    <>
-      <Head>
-        <title>Xtream to M3U Converter</title>
-        <meta name="description" content="Convert Xtream Codes to M3U playlists" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </Head>
-
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 py-8 px-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-white rounded-lg shadow-xl p-8">
-            <h1 className="text-3xl font-bold text-center text-gray-800 mb-8">
-              🎬 Xtream to M3U Converter
-            </h1>
-            
-            <div className="grid md:grid-cols-1 gap-8">
-              {/* Categories Section */}
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold text-gray-700">IPTV Categories</h2>
-                  <button
-                    onClick={handleLogin}
-                    disabled={isLoading}
-                    className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isLoading ? 'Loading...' : 'Load Categories'}
-                  </button>
-                </div>
-                
-                {categories.length > 0 && (
-                  <div className="space-y-2 max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-4">
-                    <div className="mb-4">
-                      <button
-                        onClick={() => setSelectedCategories(
-                          selectedCategories.length === categories.length 
-                            ? [] 
-                            : categories.map(cat => cat.category_id)
-                        )}
-                        className="text-sm text-blue-600 hover:text-blue-800"
-                      >
-                        {selectedCategories.length === categories.length ? 'Deselect All' : 'Select All'}
-                      </button>
-                    </div>
-                    
-                    {categories.map((category) => (
-                      <label key={category.category_id} className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedCategories.includes(category.category_id)}
-                          onChange={() => toggleCategory(category.category_id)}
-                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                        />
-                        <span className="text-sm text-gray-700">{category.category_name}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-
-                {categories.length > 0 && (
-                  <button
-                    onClick={handleGenerateM3U}
-                    disabled={selectedCategories.length === 0 || isLoading}
-                    className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isLoading ? 'Generating...' : 'Generate M3U Playlist'}
-                  </button>
-                )}
-              </div>
-
-            {/* Error Display */}
-            {error && (
-              <div className="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-                <p className="font-medium">Error:</p>
-                <p>{error}</p>
-              </div>
-            )}
-
-            {/* M3U URL Display */}
-            {m3uUrl && (
-              <div className="mt-8 p-6 bg-green-50 border border-green-200 rounded-lg">
-                <h3 className="text-lg font-semibold text-green-800 mb-4">
-                  ✅ M3U Playlist Generated Successfully!
-                </h3>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-green-700 mb-2">
-                      Your M3U Playlist URL:
-                    </label>
-                    <div className="flex space-x-2">
-                      <input
-                        type="text"
-                        value={m3uUrl}
-                        readOnly
-                        className="flex-1 px-3 py-2 bg-white border border-green-300 rounded-lg text-sm"
-                      />
-                      <button
-                        onClick={() => navigator.clipboard.writeText(m3uUrl)}
-                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
-                      >
-                        Copy
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="text-sm text-green-700">
-                    <p className="font-medium mb-2">How to use:</p>
-                    <ul className="list-disc list-inside space-y-1">
-                      <li>Copy the URL above and paste it into your IPTV player</li>
-                      <li>Compatible with VLC, OTT Navigator, Kodi, and more</li>
-                      <li>The playlist includes only your selected categories</li>
-                      <li>Individual streams can be accessed at: <code>/api/play/[streamId].m3u8</code></li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+    <div style={{ padding: '40px', fontFamily: 'Arial, sans-serif', maxWidth: '800px', margin: '0 auto' }}>
+      <h1>Xtream Codes to M3U Converter API</h1>
+      
+      <h2>Available Endpoints:</h2>
+      
+      <div style={{ backgroundColor: '#f5f5f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+        <h3>1. Authentication</h3>
+        <p><strong>POST</strong> <code>/api/auth</code></p>
+        <p>Body: <code>{"{"}"server": "http://yourserver.com", "username": "your_user", "password": "your_pass"{"}"}</code></p>
       </div>
 
-      <style jsx>{`
-        .min-h-screen {
-          min-height: 100vh;
-        }
-      `}</style>
-    </>
-  );
+      <div style={{ backgroundColor: '#f5f5f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+        <h3>2. Get Categories</h3>
+        <p><strong>GET</strong> <code>/api/get-categories?server=SERVER&username=USER&password=PASS&type=TYPE</code></p>
+        <p>Types: <code>live</code>, <code>vod</code>, <code>series</code></p>
+      </div>
+
+      <div style={{ backgroundColor: '#f5f5f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+        <h3>3. Generate M3U Playlist</h3>
+        <p><strong>GET</strong> <code>/api/generate-m3u?server=SERVER&username=USER&password=PASS&type=TYPE&category_id=ID</code></p>
+        <p>Returns downloadable M3U file</p>
+      </div>
+
+      <div style={{ backgroundColor: '#f5f5f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+        <h3>4. Stream Proxy</h3>
+        <p><strong>GET</strong> <code>/api/play/SERVER/USERNAME/PASSWORD/STREAM_ID.m3u8</code></p>
+        <p>Direct HLS streaming endpoint</p>
+      </div>
+
+      <div style={{ backgroundColor: '#e8f4fd', padding: '20px', borderRadius: '8px', marginTop: '30px' }}>
+        <h3>Example Usage:</h3>
+        <p>1. Generate M3U: <br/>
+        <code>/api/generate-m3u?server=yourserver.com&username=testuser&password=testpass&type=live</code></p>
+        
+        <p>2. Stream URL: <br/>
+        <code>/api/play/yourserver.com/testuser/testpass/12345.m3u8</code></p>
+      </div>
+    </div>
+  )
 }
