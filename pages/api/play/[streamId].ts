@@ -1,69 +1,75 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { XTREAM_CONFIG, buildStreamUrl } from '../../../lib/config';
+import { NextApiRequest, NextApiResponse } from 'next'
+import axios from 'axios'
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const { params } = req.query
+  
+  if (!params || !Array.isArray(params)) {
+    return res.status(400).json({ error: 'Invalid parameters' })
   }
 
-  const { streamId } = req.query;
-
-  // Extract stream ID from filename (remove .m3u8 or .ts extension)
-  const cleanStreamId = Array.isArray(streamId) 
-    ? streamId[0].replace(/\.(m3u8|ts)$/, '') 
-    : streamId?.replace(/\.(m3u8|ts)$/, '');
-
-  if (!cleanStreamId) {
-    return res.status(400).json({ 
-      error: 'Missing stream ID parameter' 
-    });
+  // Expected format: /api/play/server/username/password/streamId.m3u8
+  // or: /api/play/server/username/password/streamId.ts
+  if (params.length < 4) {
+    return res.status(400).json({ error: 'Missing parameters. Format: /api/play/server/username/password/streamId.m3u8' })
   }
+
+  const server = params[0]
+  const username = params[1] 
+  const password = params[2]
+  const streamFile = params[3]
+
+  // Extract stream ID and extension
+  const streamMatch = streamFile.match(/^(.+)\.(m3u8|ts|mp4)$/)
+  if (!streamMatch) {
+    return res.status(400).json({ error: 'Invalid stream format' })
+  }
+
+  const streamId = streamMatch[1]
+  const extension = streamMatch[2]
 
   try {
-    // Determine stream format based on original request
-    const originalStreamId = Array.isArray(streamId) ? streamId[0] : streamId;
-    const isM3U8 = originalStreamId?.endsWith('.m3u8');
-    const format = isM3U8 ? 'm3u8' : 'ts';
+    const baseUrl = `http://${server}`
+    let streamUrl = ''
 
-    // Build the actual Xtream stream URL using config
-    const streamUrl = buildStreamUrl(cleanStreamId, format);
+    if (extension === 'm3u8') {
+      // HLS Live stream
+      streamUrl = `${baseUrl}/live/${username}/${password}/${streamId}.m3u8`
+    } else if (extension === 'ts') {
+      // HLS segment
+      streamUrl = `${baseUrl}/live/${username}/${password}/${streamId}.ts`
+    } else if (extension === 'mp4') {
+      // VOD stream
+      streamUrl = `${baseUrl}/movie/${username}/${password}/${streamId}.mp4`
+    }
 
-    // Fetch the stream
-    const streamResponse = await fetch(streamUrl, {
+    // Proxy the stream
+    const response = await axios.get(streamUrl, {
+      responseType: 'stream',
+      timeout: 30000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': XTREAM_CONFIG.url,
-      },
-    });
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    })
 
-    if (!streamResponse.ok) {
-      throw new Error(`Stream not available: ${streamResponse.status}`);
+    // Set appropriate headers
+    if (extension === 'm3u8') {
+      res.setHeader('Content-Type', 'application/vnd.apple.mpegurl')
+    } else if (extension === 'ts') {
+      res.setHeader('Content-Type', 'video/mp2t')
+    } else if (extension === 'mp4') {
+      res.setHeader('Content-Type', 'video/mp4')
     }
 
-    // Set appropriate headers based on stream type
-    if (isM3U8) {
-      res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-    } else {
-      res.setHeader('Content-Type', 'video/mp2t');
-    }
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET')
+    res.setHeader('Cache-Control', 'no-cache')
 
-    // Set caching and CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.setHeader('Content-Disposition', `inline; filename="${cleanStreamId}.${format}"`);
-
-    // Stream the content
-    const streamBuffer = await streamResponse.arrayBuffer();
-    res.status(200).send(Buffer.from(streamBuffer));
+    // Pipe the stream response
+    response.data.pipe(res)
 
   } catch (error) {
-    console.error('Stream proxy error:', error);
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to proxy stream' 
-    });
+    console.error('Stream proxy error:', error)
+    res.status(404).json({ error: 'Stream not found or server unreachable' })
   }
 }
