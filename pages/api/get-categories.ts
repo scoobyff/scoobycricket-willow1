@@ -1,84 +1,41 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { XTREAM_CONFIG, buildXtreamUrl } from '../../lib/config';
+import { NextApiRequest, NextApiResponse } from 'next'
+import axios from 'axios'
 
-interface Category {
-  category_id: string;
-  category_name: string;
-  parent_id: number;
-}
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const { server, username, password, type = 'live' } = req.query
 
-interface XtreamAuthResponse {
-  user_info: {
-    username: string;
-    password: string;
-    message: string;
-    auth: number;
-    status: string;
-    exp_date: string;
-    is_trial: string;
-    active_cons: string;
-    created_at: string;
-    max_connections: string;
-  };
-  server_info: {
-    url: string;
-    port: string;
-    https_port: string;
-    server_protocol: string;
-    rtmp_port: string;
-    timezone: string;
-    timestamp_now: number;
-  };
-}
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  if (!server || !username || !password) {
+    return res.status(400).json({ error: 'Missing credentials' })
   }
 
   try {
-    // First, authenticate with Xtream API using config
-    const authUrl = buildXtreamUrl('');
-    
-    const authResponse = await fetch(authUrl);
-    if (!authResponse.ok) {
-      throw new Error('Failed to authenticate with Xtream server');
+    const baseUrl = (server as string).replace(/\/$/, '')
+    let apiUrl = ''
+
+    switch (type) {
+      case 'live':
+        apiUrl = `${baseUrl}/player_api.php?username=${username}&password=${password}&action=get_live_categories`
+        break
+      case 'vod':
+        apiUrl = `${baseUrl}/player_api.php?username=${username}&password=${password}&action=get_vod_categories`
+        break
+      case 'series':
+        apiUrl = `${baseUrl}/player_api.php?username=${username}&password=${password}&action=get_series_categories`
+        break
+      default:
+        return res.status(400).json({ error: 'Invalid type. Use: live, vod, or series' })
     }
 
-    const authData: XtreamAuthResponse = await authResponse.json();
-    
-    if (!authData.user_info || authData.user_info.auth !== 1) {
-      throw new Error('Invalid credentials or authentication failed');
-    }
+    const response = await axios.get(apiUrl, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    })
 
-    // Get live TV categories
-    const categoriesUrl = buildXtreamUrl('get_live_categories');
-    
-    const categoriesResponse = await fetch(categoriesUrl);
-    if (!categoriesResponse.ok) {
-      throw new Error('Failed to fetch categories');
-    }
-
-    const categoriesData: Category[] = await categoriesResponse.json();
-    
-    // Filter out empty categories and sort by name
-    const filteredCategories = categoriesData
-      .filter(cat => cat.category_name && cat.category_name.trim() !== '')
-      .sort((a, b) => a.category_name.localeCompare(b.category_name));
-
-    res.status(200).json({
-      success: true,
-      categories: filteredCategories,
-      server_info: authData.server_info
-    });
-
+    res.status(200).json(response.data)
   } catch (error) {
-    console.error('Error fetching categories:', error);
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to fetch categories' 
-    });
+    console.error('Categories error:', error)
+    res.status(500).json({ error: 'Failed to fetch categories' })
   }
 }
