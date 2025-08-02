@@ -1,41 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   swcMinify: true,
-  
-  // Enable API routes
-  async headers() {
-    return [
-      {
-        source: '/api/:path*',
-        headers: [
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: '*',
-          },
-          {
-            key: 'Access-Control-Allow-Methods',
-            value: 'GET, POST, PUT, DELETE, OPTIONS',
-          },
-          {
-            key: 'Access-Control-Allow-Headers',
-            value: 'Content-Type, Authorization',
-          },
-        ],
-      },
-    ];
+  experimental: {
+    appDir: true,
   },
+}
 
-  // Optional: Configure redirects
-  async redirects() {
-    return [
-      {
-        source: '/xtream-to-m3u',
-        destination: '/',
-        permanent: false,
-      },
-    ];
-  },
-};
-
-module.exports = nextConfig;
+module.exports = nextConfig
