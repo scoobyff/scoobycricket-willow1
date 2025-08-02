@@ -1,110 +1,85 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
+import { NextApiRequest, NextApiResponse } from 'next'
+import axios from 'axios'
 
-interface Channel {
-  num: number;
-  name: string;
-  stream_type: string;
-  stream_id: number;
-  stream_icon: string;
-  epg_channel_id: string;
-  added: string;
-  category_id: string;
-  custom_sid: string;
-  tv_archive: number;
-  direct_source: string;
-  tv_archive_duration: number;
-}
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const { server, username, password, category_id, type = 'live' } = req.query
 
-interface Category {
-  category_id: string;
-  category_name: string;
-  parent_id: number;
-}
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const { url, username, password, categories } = req.body;
-
-  if (!url || !username || !password) {
-    return res.status(400).json({ error: 'Missing required parameters' });
+  if (!server || !username || !password) {
+    return res.status(400).json({ error: 'Missing credentials' })
   }
 
   try {
-    // Clean URL
-    const cleanUrl = url.replace(/\/$/, '');
-    
-    // Get all categories first (for mapping category names)
-    const categoriesUrl = `${cleanUrl}/player_api.php?username=${username}&password=${password}&action=get_live_categories`;
-    const categoriesResponse = await fetch(categoriesUrl);
-    
-    if (!categoriesResponse.ok) {
-      throw new Error('Failed to fetch categories');
-    }
-    
-    const allCategories: Category[] = await categoriesResponse.json();
-    const categoryMap = new Map<string, string>();
-    
-    allCategories.forEach(cat => {
-      categoryMap.set(cat.category_id, cat.category_name);
-    });
+    const baseUrl = (server as string).replace(/\/$/, '')
+    let apiUrl = ''
 
-    // Get live streams
-    const streamsUrl = `${cleanUrl}/player_api.php?username=${username}&password=${password}&action=get_live_streams`;
-    const streamsResponse = await fetch(streamsUrl);
-    
-    if (!streamsResponse.ok) {
-      throw new Error('Failed to fetch streams');
+    // Get streams based on type
+    switch (type) {
+      case 'live':
+        apiUrl = category_id 
+          ? `${baseUrl}/player_api.php?username=${username}&password=${password}&action=get_live_streams&category_id=${category_id}`
+          : `${baseUrl}/player_api.php?username=${username}&password=${password}&action=get_live_streams`
+        break
+      case 'vod':
+        apiUrl = category_id
+          ? `${baseUrl}/player_api.php?username=${username}&password=${password}&action=get_vod_streams&category_id=${category_id}`
+          : `${baseUrl}/player_api.php?username=${username}&password=${password}&action=get_vod_streams`
+        break
+      case 'series':
+        apiUrl = category_id
+          ? `${baseUrl}/player_api.php?username=${username}&password=${password}&action=get_series&category_id=${category_id}`
+          : `${baseUrl}/player_api.php?username=${username}&password=${password}&action=get_series`
+        break
+      default:
+        return res.status(400).json({ error: 'Invalid type' })
     }
 
-    const allStreams: Channel[] = await streamsResponse.json();
-    
-    // Filter streams by selected categories
-    const filteredStreams = categories && categories.length > 0 
-      ? allStreams.filter(stream => categories.includes(stream.category_id))
-      : allStreams;
+    const response = await axios.get(apiUrl, {
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    })
 
-    // Generate M3U content
-    let m3uContent = '#EXTM3U\n';
-    
-    filteredStreams.forEach(stream => {
-      const categoryName = categoryMap.get(stream.category_id) || 'Unknown';
-      const channelName = stream.name || `Channel ${stream.stream_id}`;
-      const logoUrl = stream.stream_icon || '';
-      const epgId = stream.epg_channel_id || '';
-      
-      // Add channel info
-      m3uContent += `#EXTINF:-1 tvg-id="${epgId}" tvg-name="${channelName}" tvg-logo="${logoUrl}" group-title="${categoryName}",${channelName}\n`;
-      
-      // Add stream URL - Use proxy URL for better compatibility
-      const streamUrl = `${req.headers.origin || 'https://your-domain.vercel.app'}/api/play/${stream.stream_id}.m3u8?u=${encodeURIComponent(username)}&p=${encodeURIComponent(password)}&url=${encodeURIComponent(cleanUrl)}`;
-      m3uContent += `${streamUrl}\n`;
-    });
+    const streams = response.data
 
-    // Create a unique filename based on current timestamp
-    const timestamp = Date.now();
-    const filename = `xtream_playlist_${timestamp}.m3u`;
-    
-    // Store the M3U content (in a real application, you might want to use a database or file storage)
-    // For Vercel, we'll create a dynamic endpoint that serves the M3U content
-    const m3uUrl = `${req.headers.origin || 'https://your-domain.vercel.app'}/api/serve-m3u?id=${timestamp}&u=${encodeURIComponent(username)}&p=${encodeURIComponent(password)}&url=${encodeURIComponent(cleanUrl)}&cats=${encodeURIComponent(JSON.stringify(categories))}`;
+    if (!Array.isArray(streams)) {
+      return res.status(400).json({ error: 'No streams found' })
+    }
 
-    res.status(200).json({
-      success: true,
-      m3uUrl,
-      channelCount: filteredStreams.length,
-      filename
-    });
+    // Generate M3U playlist
+    let m3uContent = '#EXTM3U\n'
 
+    streams.forEach((stream: any) => {
+      if (type === 'live') {
+        const streamUrl = `${baseUrl}/live/${username}/${password}/${stream.stream_id}.m3u8`
+        m3uContent += `#EXTINF:-1 tvg-id="${stream.stream_id}" tvg-name="${stream.name}" tvg-logo="${stream.stream_icon || ''}" group-title="${stream.category_name || 'Live'}",${stream.name}\n`
+        m3uContent += `${streamUrl}\n`
+      } else if (type === 'vod') {
+        const streamUrl = `${baseUrl}/movie/${username}/${password}/${stream.stream_id}.${stream.container_extension || 'mp4'}`
+        m3uContent += `#EXTINF:-1 tvg-id="${stream.stream_id}" tvg-name="${stream.name}" tvg-logo="${stream.stream_icon || ''}" group-title="${stream.category_name || 'Movies'}",${stream.name}\n`
+        m3uContent += `${streamUrl}\n`
+      } else if (type === 'series') {
+        // For series, we'll create entries for each episode
+        if (stream.episodes) {
+          Object.keys(stream.episodes).forEach(seasonNum => {
+            stream.episodes[seasonNum].forEach((episode: any) => {
+              const streamUrl = `${baseUrl}/series/${username}/${password}/${episode.id}.${episode.container_extension || 'mp4'}`
+              m3uContent += `#EXTINF:-1 tvg-id="${episode.id}" tvg-name="${stream.name} S${seasonNum}E${episode.episode_num}" tvg-logo="${stream.cover || ''}" group-title="${stream.category_name || 'Series'}",${stream.name} - S${seasonNum}E${episode.episode_num} - ${episode.title}\n`
+              m3uContent += `${streamUrl}\n`
+            })
+          })
+        }
+      }
+    })
+
+    // Set proper headers for M3U file
+    res.setHeader('Content-Type', 'audio/x-mpegurl')
+    res.setHeader('Content-Disposition', `attachment; filename="${type}_playlist.m3u"`)
+    res.setHeader('Access-Control-Allow-Origin', '*')
+
+    res.status(200).send(m3uContent)
   } catch (error) {
-    console.error('Error generating M3U:', error);
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to generate M3U playlist' 
-    });
+    console.error('M3U generation error:', error)
+    res.status(500).json({ error: 'Failed to generate M3U playlist' })
   }
 }
