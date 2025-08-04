@@ -13,11 +13,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Clean server URL
+    // Clean server URL - remove trailing slash
     const baseUrl = server.replace(/\/$/, '')
     
     // Authenticate with Xtream Codes API
-    const authUrl = `${http://starshare.fun/}/player_api.php?username=${home123}&password=${home123}`
+    const authUrl = `${baseUrl}/player_api.php?username=${username}&password=${password}`
     
     const response = await axios.get(authUrl, {
       timeout: 10000,
